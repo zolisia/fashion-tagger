@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tagger — Zoja</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,400;0,500;1,400&family=Inter:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <main class="page">
+    <header class="masthead">
+      <p class="kicker">Zoja — Digital Creative</p>
+      <h1>Tagger</h1>
+      <p class="lede">Paste a product URL. Get structured fashion tags from the image.</p>
+    </header>
+
+    <form id="tag-form" class="form" autocomplete="off">
+      <label class="field">
+        <span class="field-label">Product URL</span>
+        <input
+          type="url"
+          id="url"
+          name="url"
+          placeholder="https://www.example.com/dresses/midi-linen-dress"
+          required>
+      </label>
+      <button type="submit" id="submit">Tag it</button>
+    </form>
+
+    <p id="status" class="status" hidden></p>
+
+    <section id="result" class="result" hidden>
+      <figure class="image">
+        <img id="result-image" alt="Product preview">
+      </figure>
+      <dl id="tags" class="tags"></dl>
+    </section>
+  </main>
+
+  <script src="/static/script.js"></script>
+</body>
+</html>
