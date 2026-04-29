@@ -98,4 +98,4 @@ fashion-tagger/
 
 ---
 
-Built by Zoja · April 2026
+Built by zolisia · April 2026
