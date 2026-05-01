@@ -95,3 +95,7 @@
 2. **Expand neckline taxonomy:** add `collared`, `one-shoulder` (and possibly `boat`, `cowl`)
 3. **Retest Etsy** — may have been a session-specific issue rather than systemic
 4. The vision model itself is performing well; the bottleneck is data ingestion, not tagging
+
+5. Pre-tag validation: detect when input is not a garment (accessories,
+   eyewear, bags, footwear) and return a clear "this product type
+   isn't supported" message instead of a half-N/A result.
