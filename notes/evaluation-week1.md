@@ -99,3 +99,50 @@
 5. Pre-tag validation: detect when input is not a garment (accessories,
    eyewear, bags, footwear) and return a clear "this product type
    isn't supported" message instead of a half-N/A result.
+
+---
+
+## Update — Playwright Fallback Tested (3 May 2026)
+
+Implemented headless-Chromium fallback (Playwright) for sites where
+the fast `requests` path fails. The fallback fires correctly, but
+default Playwright doesn't defeat the bot protection on the most
+aggressive retailers.
+
+### Test results
+
+| Site | Fast path | Playwright fallback | Outcome |
+|---|---|---|---|
+| ASOS | ReadTimeout | Triggered, blocked | 400 |
+| Net-a-Porter | ReadTimeout | Triggered, blocked | 400 |
+| COS | HTTPError | Triggered, blocked | 400 |
+
+All three sites detect headless Chromium and refuse to serve the
+page even via the browser. Likely defenses: Datadome, Cloudflare bot
+management, or similar fingerprint-based detection.
+
+### Conclusion
+
+The fallback architecture is correct: fast path → graceful degradation
+to headless browser → clean error if both fail. But headless browsers
+alone are not sufficient for production-grade scraping of major
+fashion retailers.
+
+### What would actually work (v3 territory)
+
+- **playwright-stealth plugin** to mask headless fingerprints
+- **Residential proxy network** (e.g. Bright Data, Oxylabs) — IP
+  rotation defeats most Cloudflare-class defenses
+- **Paid scraping API** (ScrapingBee, ScraperAPI) — shifts the
+  bot-evasion arms race onto a vendor, ~$0.001–0.005 per request
+- **Custom Chromium build** with patched fingerprints — doable but
+  high maintenance
+
+### What this means for the project
+
+v2 ships with Playwright fallback as an architectural improvement.
+For sites where it doesn't help (the hardest 3), the user gets a
+graceful "couldn't load that page" message instead of a hang or
+crash. v3 will tackle the bot-evasion layer properly with one of the
+approaches above — or, more strategically, will move toward
+fine-tuned models on a curated dataset where we own the images.

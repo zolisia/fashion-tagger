@@ -1,5 +1,6 @@
 import json
 import os
+import time
 from pathlib import Path
 from urllib.parse import urljoin
 
@@ -11,6 +12,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, HttpUrl
+from playwright.sync_api import Error as PlaywrightError, TimeoutError as PlaywrightTimeoutError, sync_playwright
 
 load_dotenv()
 
@@ -76,14 +78,8 @@ class TagResponse(BaseModel):
 app = FastAPI(title="Tagger")
 
 
-def extract_og_image(page_url: str) -> str:
-    try:
-        r = requests.get(page_url, headers=BROWSER_HEADERS, timeout=12, allow_redirects=True)
-        r.raise_for_status()
-    except requests.RequestException as e:
-        raise HTTPException(status_code=400, detail=f"Couldn't load that page ({e.__class__.__name__}). Double-check the link.")
-
-    soup = BeautifulSoup(r.text, "html.parser")
+def _find_og_image(html: str, base_url: str) -> str | None:
+    soup = BeautifulSoup(html, "html.parser")
     candidates = [
         ("meta", {"property": "og:image"}),
         ("meta", {"name": "og:image"}),
@@ -93,12 +89,72 @@ def extract_og_image(page_url: str) -> str:
     for tag, attrs in candidates:
         el = soup.find(tag, attrs=attrs)
         if el and el.get("content"):
-            return urljoin(str(r.url), el["content"].strip())
+            return urljoin(base_url, el["content"].strip())
+    return None
 
-    raise HTTPException(
-        status_code=422,
-        detail="No og:image meta tag on this page. Try a different product link — most retailers include one.",
-    )
+
+def _extract_og_image_with_requests(page_url: str) -> str | None:
+    try:
+        r = requests.get(page_url, headers=BROWSER_HEADERS, timeout=12, allow_redirects=True)
+        r.raise_for_status()
+    except requests.RequestException as exc:
+        print(f"[playwright] requests fast path failed for {page_url}: {exc.__class__.__name__}")
+        return None
+
+    image_url = _find_og_image(r.text, str(r.url))
+    if image_url:
+        print(f"[fast] og:image found via requests: {image_url}")
+        return image_url
+
+    print(f"[playwright] og:image missing in requests response for {page_url}")
+    return None
+
+
+def _extract_og_image_with_playwright(page_url: str, timeout_seconds: float) -> str:
+    print(f"[playwright] fallback triggered for: {page_url}")
+    if timeout_seconds <= 0:
+        raise HTTPException(status_code=400, detail="Couldn't load that page (timeout). Double-check the link.")
+
+    timeout_ms = int(timeout_seconds * 1000)
+    goto_timeout_ms = max(1000, min(timeout_ms, int(timeout_ms * 0.8)))
+    render_wait_ms = min(1500, max(0, timeout_ms - goto_timeout_ms))
+
+    try:
+        with sync_playwright() as p:
+            with p.chromium.launch(headless=True, timeout=timeout_ms) as browser:
+                with browser.new_context(user_agent=BROWSER_HEADERS["User-Agent"], viewport={"width": 1280, "height": 800}) as context:
+                    page = context.new_page()
+                    page.goto(page_url, wait_until="domcontentloaded", timeout=goto_timeout_ms)
+                    if render_wait_ms > 0:
+                        page.wait_for_timeout(render_wait_ms)
+                    html_content = page.content()
+                    print(f"[playwright] page loaded, HTML length: {len(html_content)}")
+                    image_url = _find_og_image(html_content, page.url)
+                    if image_url:
+                        print(f"[playwright] og:image found via Playwright: {image_url}")
+                        return image_url
+                    print(f"[playwright] no og:image found in HTML for {page_url}")
+                    raise HTTPException(
+                        status_code=422,
+                        detail="No og:image meta tag on this page. Try a different product link — most retailers include one.",
+                    )
+    except (PlaywrightTimeoutError, PlaywrightError) as exc:
+        print(f"[playwright] Playwright error: {exc}")
+        raise HTTPException(status_code=400, detail=f"Couldn't load that page ({exc.__class__.__name__}). Double-check the link.")
+    except Exception as exc:
+        print(f"[playwright] unexpected error: {exc}")
+        raise HTTPException(status_code=400, detail=f"Couldn't load that page ({exc.__class__.__name__}). Double-check the link.")
+
+
+def extract_og_image(page_url: str) -> str:
+    start = time.monotonic()
+    image_url = _extract_og_image_with_requests(page_url)
+    if image_url:
+        return image_url
+
+    elapsed = time.monotonic() - start
+    remaining = max(0, 20.0 - elapsed)
+    return _extract_og_image_with_playwright(page_url, remaining)
 
 
 def fetch_image_bytes(image_url: str) -> tuple[bytes, str]:

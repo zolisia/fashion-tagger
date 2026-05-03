@@ -63,7 +63,7 @@ A request takes 3–5 seconds end-to-end depending on image size.
 
 ## Known limitations
 
-**Bot-protected retailers.** Many large fashion sites (Net-a-Porter, Zara, Farfetch, SSENSE) detect non-browser HTTP clients and either return 403 or hang until the request times out. A plain Chrome user-agent isn't enough to get past their protection. If a URL fails with "couldn't load that page", that's almost always the cause — the code is fine, the retailer just doesn't want to be scraped. Workarounds (not in scope here) would be a headless-browser fetcher (Playwright) or a paid scraping API.
+**Bot-protected retailers.** Many large fashion sites (Net-a-Porter, Zara, Farfetch, ASOS, COS, SSENSE) detect non-browser HTTP clients. v2 added a Playwright headless-browser fallback that fires automatically when the fast `requests` path fails — but default Playwright is also detected by the most aggressive defenses (Datadome, Cloudflare bot management). The fallback architecture is correct (fast path → graceful degradation → clean error), but defeating these defenses requires further work: stealth plugins, residential proxies, or a paid scraping API. See `notes/evaluation-week1.md` for tested results. Ship-quality scraping is a v3 concern; the current build handles smaller and indie retailers well.
 
 **Pages with no `og:image`.** Most retailers include one, but if they don't, the app returns a friendly 422 error and asks for a different link.
 
@@ -89,12 +89,31 @@ fashion-tagger/
 └── README.md
 ```
 
+## Proof of concept
+
+Using a full fledged LLM for fashion classification is overkill for this repo. This script is intentionally a proof of concept and it consumes more resources than an optimized production system would. In a production version, the goal would be to use a solution tuned specifically for this task.
+
+I am confident that repositories like HuggingFace already offer models that can work well with fashion data. Another development path would be to use a mini version of an LLM or fine-tune a model on a dataset tailored to this domain. I already have a highly reliable dataset from photos of my own clothes, which would make fine-tuning especially effective.
+
+## Future direction
+
+The current implementation calls Claude Opus 4.7 for every image — convenient for a v1, but overkill for a 5-attribute classification task in production. Future versions will explore lighter-weight approaches:
+
+- **Fashion-specific models from HuggingFace** (e.g. FashionCLIP, fashion-tuned CNNs) as drop-in replacements for the foundation model. Trade-off: lower per-call cost and ~50ms latency vs. ~3–5 seconds, at the cost of more setup and a narrower domain.
+- **Fine-tuning a smaller model** (Claude Haiku, or an open-source vision model) on a labeled fashion dataset. Personal wardrobe photos from a separate cataloguing project provide a starting dataset; this would need expansion to 500+ properly-labeled images for meaningful fine-tuning.
+- **Target metrics for v3:** <100ms latency, <$0.001 per call, comparable accuracy to current Opus 4.7 baseline (~90% on tested attributes).
+
+Why this matters: at consumer-app scale (e.g. tagging every product on a category page in real time), per-call cost dominates. The current architecture is the right *first* version; production economics demand a different one.
+
+*Credit: feedback from a senior engineer (May 2026) — exactly the right pushback for a v1 to receive.*
+
 ## Roadmap
 
 - [ ] Playwright fallback for bot-protected retailers
 - [ ] Expanded taxonomy (color, fabric, pattern)
 - [ ] Batch tagging from CSV of URLs
 - [ ] Optional persistence layer for tagged history
+- [ ] v3: Investigate HuggingFace fashion models / fine-tuning for cost & speed optimization
 
 ---
 
